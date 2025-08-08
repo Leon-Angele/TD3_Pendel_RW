@@ -50,7 +50,7 @@ class env:
     def start_episode(self):
  
 #        1. Startbefehl senden
-        print("Sende 'S', um die Episode zu starten...")
+        #print("Sende 'S', um die Episode zu starten...")
         self.ser.write(b'S')
         self.ser.flush() # Sicherstellen, dass der Befehl sofort gesendet wird
         

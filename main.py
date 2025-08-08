@@ -11,11 +11,11 @@ def calculate_reward(angle, angle_dot, action):
 
 # Parameters
 START_EPISODES = 5
-MAX_EPISODES = START_EPISODES + 50  # Total episodes
-MAX_STEPS = 800  # Timesteps per episode
+MAX_EPISODES = START_EPISODES + 100  # Total episodes
+MAX_STEPS = 200  # Timesteps per episode
 EVAL_FREQ = 10  # Evaluate every 10 episodes
-EXPL_NOISE = 0.2
-BATCH_SIZE = 256
+EXPL_NOISE = 0.1
+BATCH_SIZE = 128
 TRAININGCYCLES = 300  # Number of training iterations per step
 
 state_dim = 3  # [cos(theta), sin(theta), theta_dot]
@@ -85,9 +85,8 @@ def evaluate_episode():
     '''
 
 
-
+print("Starting training...")
 env.start_episode()
-
 while episode_num < MAX_EPISODES:
 
     episode_timesteps += 1
