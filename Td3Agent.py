@@ -1,11 +1,13 @@
+# Td3Agent.py (no changes needed for hyperparameters, but included for completeness)
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import copy
 
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
         super(Actor, self).__init__()
@@ -49,7 +51,7 @@ class Critic(nn.Module):
         return q1
 
 class TD3(object):
-    def __init__(self, state_dim, action_dim, max_action, discount=0.7, tau=0.005, policy_noise=0.2, noise_clip=0.5, policy_freq=2):
+    def __init__(self, state_dim, action_dim, max_action, discount, tau, policy_noise, noise_clip, policy_freq, expl_noise_sigma, noise_resample_interval):
         self.actor = Actor(state_dim, action_dim, max_action).to(device)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=7e-4)
@@ -65,11 +67,31 @@ class TD3(object):
         self.noise_clip = noise_clip
         self.policy_freq = policy_freq
 
+        self.expl_noise_sigma = expl_noise_sigma
+        self.noise_resample_interval = noise_resample_interval
+        self.theta_epsilon = None
+        self.expl_step_counter = 0
+
         self.total_it = 0
 
     def select_action(self, state):
         state = torch.FloatTensor(state.reshape(1, -1)).to(device)
-        return self.actor(state).cpu().data.numpy().flatten()
+        features = F.relu(self.actor.l2(F.relu(self.actor.l1(state))))
+        pre_act = self.actor.l3(features)
+        
+        # Resample theta_epsilon every n steps
+        self.expl_step_counter += 1
+        if self.theta_epsilon is None or self.expl_step_counter % self.noise_resample_interval == 0:
+            # Sample theta_epsilon with shape (action_dim, hidden_dim)
+            self.theta_epsilon = torch.randn((1, 256), device=device) * self.expl_noise_sigma  # Assuming hidden_dim=256
+        
+        # Compute noise = features @ theta_epsilon.T
+        noise = torch.matmul(features, self.theta_epsilon.T)
+        
+        noisy_pre_act = pre_act + noise
+        noisy_action = self.max_action * torch.tanh(noisy_pre_act)
+        
+        return noisy_action.cpu().data.numpy().flatten().clip(-self.max_action, self.max_action)
 
     def train(self, replay_buffer, batch_size=256):
         self.total_it += 1
@@ -78,7 +100,7 @@ class TD3(object):
         state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
 
         with torch.no_grad():
-            # Select action according to policy and add clipped noise
+            # Select action according to policy and add clipped noise (original TD3 target smoothing)
             noise = (
                 torch.randn_like(action) * self.policy_noise
             ).clamp(-self.noise_clip, self.noise_clip)
@@ -135,7 +157,6 @@ class ReplayBuffer(object):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
     def add(self, state, action, next_state, reward, done):
         self.state[self.ptr] = state
         self.action[self.ptr] = action
@@ -145,7 +166,6 @@ class ReplayBuffer(object):
 
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
-
 
     def sample(self, batch_size):
         ind = np.random.randint(0, self.size, size=batch_size)
@@ -158,21 +178,3 @@ class ReplayBuffer(object):
             torch.FloatTensor(self.not_done[ind]).to(self.device)
         )
     
-    """
-# Runs policy for X episodes and returns average reward
-def eval_policy(policy, env, eval_episodes=10, max_steps=500):
-    avg_reward = 0.
-    for _ in range(eval_episodes):
-        episode_reward = 0.
-        for _ in range(max_steps):
-            action = policy.select_action(np.array(state))
-            state, reward, terminated, truncated, _ = env.step(action)
-            episode_reward += reward
-            if terminated or truncated:
-                break
-        avg_reward += episode_reward
-    avg_reward /= eval_episodes
-    print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f}")
-    return avg_reward
-
-    """
